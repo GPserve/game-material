@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Game Icon Generator</title>
+<style>
+  :root {
+    --bg: #14121c;
+    --panel: #1e1b2a;
+    --line: #322d45;
+    --text: #e8e5f2;
+    --muted: #9a93b5;
+    --accent: #F4A838;
+  }
+  * { box-sizing: border-box; }
+  * { scrollbar-width: thin; scrollbar-color: #3f3960 transparent; }
+  ::-webkit-scrollbar { width: 11px; height: 11px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: #3f3960;
+    border: 3px solid transparent;
+    border-radius: 99px;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover { background: #574f80; background-clip: content-box; }
+  ::-webkit-scrollbar-corner { background: transparent; }
+  body {
+    margin: 0;
+    font: 14px/1.6 -apple-system, "Helvetica Neue", "PingFang TC", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  header { padding: 14px 20px; border-bottom: 1px solid var(--line); }
+  h1 { font-size: 16px; margin: 0; }
+  #warn {
+    display: none;
+    margin: 0;
+    padding: 10px 20px;
+    background: #4a2020;
+    color: #ffd9d9;
+    font-size: 13px;
+  }
+  main {
+    display: flex;
+    gap: 20px;
+    padding: 20px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 16px;
+  }
+  #controls { width: 250px; flex: 0 0 auto; }
+  #games { flex: 1 1 620px; min-width: 320px; }
+  fieldset { border: none; margin: 0 0 18px; padding: 0; }
+  fieldset:last-of-type { margin-bottom: 0; }
+  legend, .grouphead {
+    padding: 0 0 10px;
+    font-size: 12px;
+    letter-spacing: .08em;
+    color: var(--accent);
+    text-transform: uppercase;
+  }
+  .grouphead { display: flex; justify-content: space-between; align-items: baseline; }
+  label { display: block; margin-bottom: 10px; font-size: 13px; color: var(--muted); }
+  select, input[type=number] {
+    width: 100%;
+    margin-top: 4px;
+    padding: 7px 9px;
+    background: #14121c;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    color: var(--text);
+    font: inherit;
+  }
+  input[type=range] { width: 100%; margin-top: 2px; accent-color: var(--accent); }
+  input[type=range]:disabled { opacity: .35; }
+  .row { display: flex; gap: 10px; }
+  .row > label { flex: 1; }
+  .val { float: right; color: var(--text); font-variant-numeric: tabular-nums; }
+  button {
+    width: 100%;
+    padding: 10px;
+    margin-top: 8px;
+    background: var(--accent);
+    color: #241a05;
+    border: none;
+    border-radius: 6px;
+    font: 600 14px/1 inherit;
+    cursor: pointer;
+  }
+  button.ghost { background: transparent; border: 1px solid var(--line); color: var(--text); font-weight: 400; }
+  button:disabled { opacity: .5; cursor: default; }
+  .linky {
+    width: auto;
+    margin: 0;
+    padding: 0;
+    background: none;
+    border: none;
+    color: var(--muted);
+    font: inherit;
+    text-transform: none;
+    letter-spacing: 0;
+    cursor: pointer;
+    text-decoration: underline;
+  }
+
+  /* 遊戲預覽 grid */
+  #grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+    gap: 14px;
+  }
+  .cell {
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    overflow: hidden;
+    background: #14121c;
+  }
+  .cell.off { opacity: .4; }
+  .cell canvas { display: block; width: 100%; background: #000; cursor: pointer; }
+  .bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 46px;
+    padding: 8px 12px;
+    border-top: 1px solid var(--line);
+  }
+  .bar input[type=checkbox] { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; }
+  .bar .name { flex: 1; font-size: 13px; overflow: hidden; text-overflow: ellipsis; }
+  .cell.tuned .name { color: var(--accent); }
+  .bar .gear {
+    width: auto;
+    margin: 0;
+    padding: 3px 10px;
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    color: var(--muted);
+    font-size: 19px;
+    line-height: 1.3;
+  }
+  .bar .gear:hover { color: var(--accent); border-color: var(--accent); }
+
+  dialog {
+    width: 780px;
+    max-width: 94vw;
+    max-height: 92vh;
+    padding: 20px;
+    overflow: auto;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    color: var(--text);
+  }
+  dialog::backdrop { background: rgba(0, 0, 0, .6); }
+  dialog h2 { margin: 0 0 16px; font-size: 15px; }
+  dialog h2 em { color: var(--accent); font-style: normal; }
+  .tunebody { display: flex; gap: 22px; align-items: flex-start; }
+  .tunebody > .preview { flex: 0 0 340px; }
+  .tunebody > .setup { flex: 1 1 320px; }
+  dialog canvas {
+    display: block;
+    width: 100%;
+    border-radius: 7px;
+    background: #000;
+  }
+  .btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; }
+  .btns button { margin-top: 0; }
+  .btns button:last-child { grid-column: span 2; }
+</style>
+</head>
+<body>
+
+<header><h1>Game Icon Generator</h1></header>
+
+<p id="warn">
+  Opened via <code>file://</code> — the browser blocks canvas export.
+  Run <code>python3 -m http.server 8000</code> in this folder and open
+  <code>http://localhost:8000/tool.html</code>.
+</p>
+
+<main>
+  <div class="panel" id="controls">
+    <fieldset>
+      <legend>Assets</legend>
+      <label>Theme
+        <select id="theme">
+          <option value="bg_cyber">cyber</option>
+          <option value="bg_pink">pink</option>
+          <option value="bg_china">china</option>
+          <option value="bg_fight">fight</option>
+        </select>
+      </label>
+      <label>Language
+        <select id="lang"></select>
+      </label>
+    </fieldset>
+
+    <fieldset>
+      <legend>Size</legend>
+      <label>
+        <select id="size"></select>
+      </label>
+    </fieldset>
+
+    <fieldset>
+      <legend>Export</legend>
+      <label>Format
+        <select id="fmt">
+          <option value="image/webp">webp</option>
+          <option value="image/png">png</option>
+        </select>
+      </label>
+      <button id="dlZip">Export ZIP (<span id="allCount"></span>)</button>
+      <button id="resetAll" class="ghost">Reset all layouts</button>
+    </fieldset>
+  </div>
+
+  <div class="panel" id="games">
+    <div class="grouphead">
+      <span>Games — <span id="note"></span></span>
+      <span>
+        <button class="linky" id="selAll">all</button> /
+        <button class="linky" id="selNone">none</button>
+      </span>
+    </div>
+    <div id="grid"></div>
+  </div>
+</main>
+
+<dialog id="tune">
+  <h2>Layout — <em id="tuneName"></em></h2>
+  <div class="tunebody">
+    <div class="preview"><canvas id="tuneCv"></canvas></div>
+    <div class="setup">
+      <fieldset>
+        <legend>Lead</legend>
+        <label>Size <span class="val" id="leadWv"></span><input type="range" id="leadW" min="20" max="140"></label>
+        <label>X <span class="val" id="leadXv"></span><input type="range" id="leadX" min="0" max="100"></label>
+        <label>Y <span class="val" id="leadYv"></span><input type="range" id="leadY" min="0" max="100"></label>
+      </fieldset>
+      <fieldset>
+        <legend>Title</legend>
+        <label>Size <span class="val" id="titleWv"></span><input type="range" id="titleW" min="20" max="140"></label>
+        <label>X <span class="val" id="titleXv"></span><input type="range" id="titleX" min="0" max="100"></label>
+        <label>Y <span class="val" id="titleYv"></span><input type="range" id="titleY" min="0" max="100"></label>
+      </fieldset>
+      <div class="btns">
+        <button id="dlOne" class="ghost">Download this icon</button>
+        <button id="applyAll" class="ghost">Apply to all games</button>
+        <button id="tuneReset" class="ghost">Reset to default</button>
+        <button id="tuneClose">Done</button>
+      </div>
+    </div>
+  </div>
+</dialog>
+
+<script>
+const GAMES = ['baccarat', 'chicken', 'dice', 'flip', 'keno', 'limbo', 'mines', 'penguin', 'plinko', 'wheel'];
+const LANGS = [
+  { code: 'none', label: 'None' },
+  { code: 'tw', label: '繁體中文' },
+  { code: 'cn', label: '简体中文' },
+  { code: 'en', label: 'English' },
+];
+// 尺寸只決定輸出解析度；版位存在「比例」上，同比例的尺寸共用同一份版位
+const SIZES = [
+  { w: 300, h: 300, ratio: '1:1' },
+  { w: 512, h: 512, ratio: '1:1' },
+  { w: 480, h: 630, ratio: '480:630' },
+];
+const RATIOS = ['1:1', '480:630'];
+const KEYS = ['leadW', 'leadX', 'leadY', 'titleW', 'titleX', 'titleY'];
+const BASE = { leadW: 100, leadX: 50, leadY: 50, titleW: 100, titleX: 50, titleY: 80 };
+const THUMB_W = 340;
+
+const $ = id => document.getElementById(id);
+const cache = new Map();
+const sizeKey = s => `${s.w}x${s.h}`;
+const ratioOf = r => RATIOS.indexOf(r) >= 0 ? r : RATIOS[0];
+
+// layouts[game][ratio] = { leadW, leadX, leadY, titleW, titleX, titleY }
+const layouts = Object.fromEntries(GAMES.map(g =>
+  [g, Object.fromEntries(RATIOS.map(r => [r, { ...BASE }]))]));
+const selected = new Set(GAMES);
+const thumbs = {};
+let tuning = null;
+
+if (location.protocol === 'file:') $('warn').style.display = 'block';
+LANGS.forEach(l => $('lang').add(new Option(l.label, l.code)));
+$('lang').value = 'tw';   // 預設繁中，None 只是排在最上
+SIZES.forEach((s, i) => $('size').add(new Option(`${s.w} × ${s.h}`, i)));
+$('size').value = 1;   // 預設 512×512
+
+// 當前尺寸決定比例；同比例的尺寸（300／512）共用同一份版位
+const curSize = () => SIZES[+$('size').value];
+const curRatio = () => curSize().ratio;
+const dims = () => ({ w: curSize().w, h: curSize().h });
+const isTuned = g => RATIOS.some(r => KEYS.some(k => layouts[g][r][k] !== BASE[k]));
+const langLabel = code => LANGS.find(l => l.code === code).label;
+const title = g => g[0].toUpperCase() + g.slice(1);
+const ext = () => $('fmt').value === 'image/png' ? 'png' : 'webp';
+// 主題／語系／尺寸都取當前選擇：匯出的就是 grid 上看到的那幾張
+const countJobs = () => $('allCount').textContent = selected.size;
+
+function loadImage(src) {
+  if (cache.has(src)) return cache.get(src);
+  const p = new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => res(img);
+    img.onerror = () => rej(new Error('Missing asset: ' + src));
+    img.src = src;
+  });
+  cache.set(src, p);
+  return p;
+}
+
+// 以中心點繪製一層，寬度依 widthPct 換算、高度等比
+function drawLayer(ctx, cw, ch, img, widthPct, cxPct, cyPct) {
+  const w = cw * widthPct / 100;
+  const h = w * img.naturalHeight / img.naturalWidth;
+  ctx.drawImage(img, cw * cxPct / 100 - w / 2, ch * cyPct / 100 - h / 2, w, h);
+}
+
+// 背景鋪滿畫布（cover，不變形）
+function drawCover(ctx, cw, ch, img) {
+  const s = Math.max(cw / img.naturalWidth, ch / img.naturalHeight);
+  const w = img.naturalWidth * s, h = img.naturalHeight * s;
+  ctx.drawImage(img, (cw - w) / 2, (ch - h) / 2, w, h);
+}
+
+// 一張完整合成的 icon：背景 → 主視覺 → 標題，縮圖／彈窗／匯出共用這條路徑
+async function drawIcon(cv, game, theme, lang, ratio) {
+  const ctx = cv.getContext('2d');
+  try {
+    const [bg, lead, title] = await Promise.all([
+      loadImage(theme + '.webp'),
+      loadImage(game + '/lead.webp'),
+      lang === 'none' ? null : loadImage(game + '/' + lang + '.webp'),
+    ]);
+    const L = layouts[game][ratioOf(ratio)];
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    drawCover(ctx, cv.width, cv.height, bg);
+    drawLayer(ctx, cv.width, cv.height, lead, L.leadW, L.leadX, L.leadY);
+    if (title) drawLayer(ctx, cv.width, cv.height, title, L.titleW, L.titleX, L.titleY);
+  } catch (e) {
+    ctx.fillStyle = '#4a2020';
+    ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.fillStyle = '#ffd9d9';
+    ctx.font = Math.round(cv.width / 22) + 'px sans-serif';
+    ctx.fillText(e.message, 10, cv.height / 2);
+    throw e;
+  }
+}
+
+/* ---------- grid ---------- */
+
+function buildGrid() {
+  const grid = $('grid');
+  grid.innerHTML = '';
+  GAMES.forEach(g => {
+    const cell = document.createElement('div');
+    cell.className = 'cell';
+
+    const cv = document.createElement('canvas');
+    cv.title = 'Fine-tune ' + title(g);
+    cv.onclick = () => openTune(g);
+    thumbs[g] = cv;
+
+    const bar = document.createElement('div');
+    bar.className = 'bar';
+
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = selected.has(g);
+    cb.title = 'Include in export';
+    cb.onchange = () => {
+      cb.checked ? selected.add(g) : selected.delete(g);
+      cell.classList.toggle('off', !cb.checked);
+      countJobs();
+    };
+
+    const name = document.createElement('span');
+    name.className = 'name';
+    name.textContent = title(g);
+
+    const gear = document.createElement('button');
+    gear.className = 'gear';
+    gear.textContent = '⚙';
+    gear.title = 'Fine-tune ' + title(g);
+    gear.onclick = () => openTune(g);
+
+    bar.append(cb, name, gear);
+    cell.append(cv, bar);
+    grid.append(cell);
+  });
+  markCells();
+}
+
+function markCells() {
+  [...$('grid').children].forEach((cell, i) => {
+    const g = GAMES[i];
+    cell.classList.toggle('off', !selected.has(g));
+    cell.classList.toggle('tuned', isTuned(g));
+  });
+}
+
+async function renderThumb(g) {
+  const r = curRatio();
+  const { w, h } = dims();
+  const cv = thumbs[g];
+  cv.width = THUMB_W;
+  cv.height = Math.round(THUMB_W * h / w);
+  try { await drawIcon(cv, g, $('theme').value, $('lang').value, r); }
+  catch (e) { say(e.message); }
+}
+
+async function renderAll() {
+  $('note').textContent =
+    `${$('theme').value.replace('bg_', '')} / ${langLabel($('lang').value)} / ${sizeKey(curSize())}`;
+  markCells();
+  await Promise.all(GAMES.map(renderThumb));
+}
+
+const say = msg => console.log('[icon-tool] ' + msg);
+
+/* ---------- zip (store, 無壓縮、無外部依賴) ---------- */
+
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let i = 0; i < 256; i++) {
+    let c = i;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    t[i] = c >>> 0;
+  }
+  return t;
+})();
+
+function crc32(bytes) {
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+
+function makeZip(files) {
+  const enc = new TextEncoder();
+  const now = new Date();
+  const time = ((now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1)) & 0xFFFF;
+  const date = (((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate()) & 0xFFFF;
+  const body = [], central = [];
+  let offset = 0, centralSize = 0;
+
+  for (const f of files) {
+    const name = enc.encode(f.name);
+    const crc = crc32(f.bytes);
+    const size = f.bytes.length;
+
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true);   // local file header
+    lh.setUint16(4, 20, true);           // version needed
+    lh.setUint16(8, 0, true);            // method: store
+    lh.setUint16(10, time, true);
+    lh.setUint16(12, date, true);
+    lh.setUint32(14, crc, true);
+    lh.setUint32(18, size, true);        // compressed
+    lh.setUint32(22, size, true);        // uncompressed
+    lh.setUint16(26, name.length, true);
+    body.push(new Uint8Array(lh.buffer), name, f.bytes);
+
+    const ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0, 0x02014b50, true);   // central directory header
+    ch.setUint16(4, 20, true);           // version made by
+    ch.setUint16(6, 20, true);           // version needed
+    ch.setUint16(10, 0, true);           // method: store
+    ch.setUint16(12, time, true);
+    ch.setUint16(14, date, true);
+    ch.setUint32(16, crc, true);
+    ch.setUint32(20, size, true);
+    ch.setUint32(24, size, true);
+    ch.setUint16(28, name.length, true);
+    ch.setUint32(42, offset, true);      // relative offset of local header
+    central.push(new Uint8Array(ch.buffer), name);
+
+    offset += 30 + name.length + size;
+    centralSize += 46 + name.length;
+  }
+
+  const eocd = new DataView(new ArrayBuffer(22));
+  eocd.setUint32(0, 0x06054b50, true);   // end of central directory
+  eocd.setUint16(8, files.length, true);
+  eocd.setUint16(10, files.length, true);
+  eocd.setUint32(12, centralSize, true);
+  eocd.setUint32(16, offset, true);
+
+  return new Blob([...body, ...central, new Uint8Array(eocd.buffer)], { type: 'application/zip' });
+}
+
+/* ---------- export ---------- */
+
+// 依目標尺寸離屏重畫再編碼，成品畫質不受縮圖解析度影響
+async function renderBytes(game, theme, lang, size) {
+  const cv = document.createElement('canvas');
+  cv.width = size.w;
+  cv.height = size.h;
+  await drawIcon(cv, game, theme, lang, size.ratio);
+  const blob = await new Promise((res, rej) => cv.toBlob(
+    b => b ? res(b) : rej(new Error('Encode failed — canvas tainted? Serve over http instead of file://')),
+    $('fmt').value, 0.95));
+  return new Uint8Array(await blob.arrayBuffer());
+}
+
+function saveBlob(blob, name) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 8000);
+}
+
+$('dlZip').onclick = async () => {
+  const games = GAMES.filter(g => selected.has(g));
+  const size = curSize();
+  if (!games.length) return say('No games selected');
+
+  const theme = $('theme').value;
+  const lang = $('lang').value;
+  const btn = $('dlZip');
+  const label = btn.innerHTML;
+  btn.disabled = true;
+  const files = [];
+  let done = 0, fail = 0;
+
+  for (const g of games) {
+    const name = `${g}_${theme.replace('bg_', '')}_${lang}_${sizeKey(size)}.${ext()}`;
+    try {
+      files.push({ name, bytes: await renderBytes(g, theme, lang, size) });
+    } catch (e) {
+      fail++;
+      say('✗ ' + name + ' — ' + e.message);
+    }
+    btn.textContent = `Rendering ${++done}/${games.length}…`;
+  }
+
+  if (files.length) {
+    const zip = makeZip(files);
+    const zipName = `game-icons_${theme.replace('bg_', '')}_${lang}_${sizeKey(size)}.zip`;
+    saveBlob(zip, zipName);
+    say(`${zipName} — ${files.length} icons, ${(zip.size / 1048576).toFixed(1)} MB${fail ? `, ${fail} failed` : ''}`);
+  }
+  btn.innerHTML = label;
+  btn.disabled = false;
+  countJobs();
+};
+
+$('dlOne').onclick = async () => {
+  const s = curSize();
+  const name = `${tuning}_${$('theme').value.replace('bg_', '')}_${$('lang').value}_${sizeKey(s)}.${ext()}`;
+  try {
+    saveBlob(new Blob([await renderBytes(tuning, $('theme').value, $('lang').value, s)],
+      { type: $('fmt').value }), name);
+    say('Saved ' + name);
+  } catch (e) { say(e.message); }
+};
+
+/* ---------- fine-tune dialog ---------- */
+
+function openTune(game) {
+  tuning = game;
+  $('tuneName').textContent = `${title(game)} · ${sizeKey(curSize())}`;
+  KEYS.forEach(k => $(k).value = layouts[game][curRatio()][k]);
+  syncTuneLabels();
+  syncTitleState();
+  drawTune();
+  $('tune').showModal();
+}
+
+const syncTuneLabels = () => KEYS.forEach(k => $(k + 'v').textContent = $(k).value + '%');
+
+// 沒有標題層時，Title 那組滑桿停用
+const syncTitleState = () => {
+  const off = $('lang').value === 'none';
+  ['titleW', 'titleX', 'titleY'].forEach(k => $(k).disabled = off);
+};
+
+async function drawTune() {
+  const r = curRatio();
+  const { w, h } = dims();
+  const cv = $('tuneCv');
+  cv.width = 600;
+  cv.height = Math.round(600 * h / w);
+  try { await drawIcon(cv, tuning, $('theme').value, $('lang').value, r); } catch (e) {}
+}
+
+KEYS.forEach(k => $(k).addEventListener('input', () => {
+  layouts[tuning][curRatio()][k] = +$(k).value;
+  syncTuneLabels();
+  drawTune();
+  renderThumb(tuning);
+  markCells();
+}));
+
+$('applyAll').onclick = () => {
+  const r = curRatio();
+  GAMES.forEach(g => Object.assign(layouts[g][r], layouts[tuning][r]));
+  say(`Layout of "${title(tuning)}" (${r}) applied to all ${GAMES.length} games`);
+  renderAll();
+};
+
+$('tuneReset').onclick = () => {
+  const r = curRatio();
+  Object.assign(layouts[tuning][r], BASE);
+  KEYS.forEach(k => $(k).value = BASE[k]);
+  syncTuneLabels();
+  drawTune();
+  renderThumb(tuning);
+  markCells();
+};
+
+$('tuneClose').onclick = () => $('tune').close();
+
+/* ---------- misc ---------- */
+
+$('resetAll').onclick = () => {
+  GAMES.forEach(g => RATIOS.forEach(r => Object.assign(layouts[g][r], BASE)));
+  renderAll();
+  say('All layouts reset to default');
+};
+
+$('selAll').onclick = () => { GAMES.forEach(g => selected.add(g)); buildGrid(); renderAll(); countJobs(); };
+$('selNone').onclick = () => { selected.clear(); buildGrid(); renderAll(); countJobs(); };
+
+['theme', 'lang', 'size'].forEach(id => $(id).addEventListener('input', renderAll));
+$('lang').addEventListener('input', syncTitleState);
+
+buildGrid();
+countJobs();
+renderAll();
+</script>
+</body>
+</html>
