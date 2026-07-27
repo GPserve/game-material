@@ -173,6 +173,41 @@
   .btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; }
   .btns button { margin-top: 0; }
   .btns button:last-child { grid-column: span 2; }
+
+  /* import dialog */
+  .drop {
+    display: block;
+    margin: 12px 0 0;
+    padding: 14px;
+    border: 1px dashed var(--line);
+    border-radius: 8px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .drop:hover { border-color: var(--accent); color: var(--text); }
+  .drop input { display: none; }
+  .msg {
+    margin-top: 10px;
+    font: 12px/1.6 ui-monospace, Menlo, monospace;
+    white-space: pre-wrap;
+    color: var(--muted);
+  }
+  .msg .ok { color: #7ddba1; }
+  .msg .warn { color: var(--accent); }
+  .msg .err { color: #ff9a9a; }
+  .spec { margin-top: 16px; font-size: 12px; color: var(--muted); }
+  .spec summary { cursor: pointer; color: var(--accent); }
+  .spec pre {
+    margin: 8px 0;
+    padding: 10px;
+    background: #14121c;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    overflow-x: auto;
+    color: var(--text);
+  }
 </style>
 </head>
 <body>
@@ -207,6 +242,11 @@
       <label>
         <select id="size"></select>
       </label>
+    </fieldset>
+
+    <fieldset>
+      <legend>Import</legend>
+      <button id="impOpen" class="ghost">Choose pack (.zip)</button>
     </fieldset>
 
     <fieldset>
@@ -261,8 +301,54 @@
   </div>
 </dialog>
 
+<dialog id="imp">
+  <h2>Import asset pack — <em id="impName">no pack loaded</em></h2>
+
+  <div class="tunebody">
+    <div class="preview">
+      <canvas id="impCv"></canvas>
+      <label class="drop" for="impFile">
+        <input type="file" id="impFile" accept=".zip,application/zip">
+        <span>Choose a .zip pack — one at a time</span>
+      </label>
+      <div id="impMsg" class="msg"></div>
+    </div>
+
+    <div class="setup">
+
+      <fieldset>
+        <legend>Lead</legend>
+        <label>Size <span class="val" id="impLeadWv"></span><input type="range" id="impLeadW" min="20" max="140"></label>
+        <label>X <span class="val" id="impLeadXv"></span><input type="range" id="impLeadX" min="0" max="100"></label>
+        <label>Y <span class="val" id="impLeadYv"></span><input type="range" id="impLeadY" min="0" max="100"></label>
+      </fieldset>
+      <fieldset>
+        <legend>Title</legend>
+        <label>Size <span class="val" id="impTitleWv"></span><input type="range" id="impTitleW" min="20" max="140"></label>
+        <label>X <span class="val" id="impTitleXv"></span><input type="range" id="impTitleX" min="0" max="100"></label>
+        <label>Y <span class="val" id="impTitleYv"></span><input type="range" id="impTitleY" min="0" max="100"></label>
+      </fieldset>
+
+      <div class="btns">
+        <button id="impDl" class="ghost">Download this icon</button>
+        <button id="impReset" class="ghost">Reset to default</button>
+        <button id="impClose">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <details class="spec">
+    <summary>Recognized file names</summary>
+    <pre>lead.webp    key art (required)
+cn.webp      localized title — also en.webp / tw.webp</pre>
+    One pack holds one game; its name comes from the .zip filename.
+    Backgrounds come from the built-in list, so packs don't need them.
+    Anything else is ignored, and a single wrapper folder is stripped automatically.
+  </details>
+</dialog>
+
 <script>
-const GAMES = ['baccarat', 'chicken', 'dice', 'flip', 'keno', 'limbo', 'mines', 'penguin', 'plinko', 'wheel'];
+const GAMES = ['baccarat', 'blackjack', 'chicken', 'dice', 'flip', 'keno', 'limbo', 'mines', 'penguin', 'plinko', 'wheel'];
 const LANGS = [
   { code: 'none', label: 'None' },
   { code: 'tw', label: '繁體中文' },
@@ -335,16 +421,15 @@ function drawCover(ctx, cw, ch, img) {
   ctx.drawImage(img, (cw - w) / 2, (ch - h) / 2, w, h);
 }
 
-// 一張完整合成的 icon：背景 → 主視覺 → 標題，縮圖／彈窗／匯出共用這條路徑
-async function drawIcon(cv, game, theme, lang, ratio) {
+// 一張完整合成的 icon：背景 → 主視覺 → 標題。內建素材與匯入包共用這條路徑
+async function drawComposite(cv, srcs, L) {
   const ctx = cv.getContext('2d');
   try {
     const [bg, lead, title] = await Promise.all([
-      loadImage(theme + '.webp'),
-      loadImage(game + '/lead.webp'),
-      lang === 'none' ? null : loadImage(game + '/' + lang + '.webp'),
+      loadImage(srcs.bg),
+      loadImage(srcs.lead),
+      srcs.title ? loadImage(srcs.title) : null,
     ]);
-    const L = layouts[game][ratioOf(ratio)];
     ctx.clearRect(0, 0, cv.width, cv.height);
     drawCover(ctx, cv.width, cv.height, bg);
     drawLayer(ctx, cv.width, cv.height, lead, L.leadW, L.leadX, L.leadY);
@@ -358,6 +443,12 @@ async function drawIcon(cv, game, theme, lang, ratio) {
     throw e;
   }
 }
+
+const drawIcon = (cv, game, theme, lang, ratio) => drawComposite(cv, {
+  bg: theme + '.webp',
+  lead: game + '/lead.webp',
+  title: lang === 'none' ? null : `${game}/${lang}.webp`,
+}, layouts[game][ratioOf(ratio)]);
 
 /* ---------- grid ---------- */
 
@@ -637,6 +728,230 @@ $('selNone').onclick = () => { selected.clear(); buildGrid(); renderAll(); count
 
 ['theme', 'lang', 'size'].forEach(id => $(id).addEventListener('input', renderAll));
 $('lang').addEventListener('input', syncTitleState);
+
+/* ---------- import: 客製化素材包（獨立於 grid，只在彈窗內作業）---------- */
+
+const IMP_KEYS = ['impLeadW', 'impLeadX', 'impLeadY', 'impTitleW', 'impTitleX', 'impTitleY'];
+const BUILTIN_THEMES = [...$('theme').options].map(o => o.value);
+const LANG_FILES = ['cn', 'en', 'tw'];
+
+// 一包一款：assets = { lead, cn, en, tw } 的 blob URL，款名取自 zip 檔名
+const pack = { name: null, game: null, assets: null, urls: [], layouts: {} };
+
+function inflateRaw(bytes) {
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+  return new Response(stream).arrayBuffer().then(b => new Uint8Array(b));
+}
+
+// 讀 zip：走 central directory，支援 store(0) 與 deflate(8)
+async function readZip(file) {
+  const buf = new Uint8Array(await file.arrayBuffer());
+  if (buf.length < 22 || buf[0] !== 0x50 || buf[1] !== 0x4b) throw new Error('Not a .zip archive');
+  const dv = new DataView(buf.buffer);
+  let eocd = -1;
+  for (let i = buf.length - 22; i >= 0 && i > buf.length - 22 - 65536; i--) {
+    if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) throw new Error('Damaged .zip — end of central directory not found');
+
+  const count = dv.getUint16(eocd + 10, true);
+  let p = dv.getUint32(eocd + 16, true);
+  const dec = new TextDecoder();
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    if (dv.getUint32(p, true) !== 0x02014b50) break;
+    const method = dv.getUint16(p + 10, true);
+    const csize = dv.getUint32(p + 20, true);
+    const nameLen = dv.getUint16(p + 28, true);
+    const extraLen = dv.getUint16(p + 30, true);
+    const cmtLen = dv.getUint16(p + 32, true);
+    const lho = dv.getUint32(p + 42, true);
+    const name = dec.decode(buf.subarray(p + 46, p + 46 + nameLen));
+    const start = lho + 30 + dv.getUint16(lho + 26, true) + dv.getUint16(lho + 28, true);
+    const raw = buf.subarray(start, start + csize);
+    if (method === 0 || method === 8) {
+      out.push({ name, bytes: method === 8 ? await inflateRaw(raw) : raw });
+    } else {
+      out.push({ name, unsupported: true });
+    }
+    p += 46 + nameLen + extraLen + cmtLen;
+  }
+  return out;
+}
+
+// 只認根層的 lead / cn / en / tw；prefix 用於剝掉單層外殼資料夾
+function classify(entries, prefix) {
+  const assets = {}, ignored = [];
+  for (const e of entries) {
+    if (!e.name.startsWith(prefix)) { ignored.push(e.name); continue; }
+    const rel = e.name.slice(prefix.length);
+    const m = /^(lead|cn|en|tw)\.webp$/i.exec(rel);
+    if (m) assets[m[1].toLowerCase()] = e;
+    else ignored.push(e.name);
+  }
+  return { assets, ignored };
+}
+
+function clearPack() {
+  pack.urls.forEach(u => { cache.delete(u); URL.revokeObjectURL(u); });
+  pack.urls = [];
+  pack.name = pack.game = pack.assets = null;
+  pack.layouts = {};
+}
+
+const impUrl = e => {
+  const u = URL.createObjectURL(new Blob([e.bytes], { type: 'image/webp' }));
+  pack.urls.push(u);
+  return u;
+};
+
+let packMsg = '';
+const impSay = html => { packMsg = html; paintMsg(); };
+// 左欄選的語系若不在包內，動態補一行提示
+function paintMsg() {
+  const l = $('lang').value;
+  const miss = pack.assets && l !== 'none' && !pack.assets[l];
+  $('impMsg').innerHTML = packMsg +
+    (miss ? `\n<span class="warn">⚠ ${langLabel(l)} not in this pack — title skipped</span>` : '');
+}
+
+async function importPack(file) {
+  impSay('Reading ' + file.name + ' …');
+  let entries;
+  try {
+    entries = await readZip(file);
+  } catch (err) {
+    clearPack();
+    refreshImport();
+    return impSay(`<span class="err">${err.message}</span>`);
+  }
+
+  const files = entries.filter(e =>
+    !e.name.endsWith('/') && !e.name.includes('__MACOSX/') && !e.name.endsWith('.DS_Store'));
+  const bad = files.filter(e => e.unsupported).map(e => e.name);
+  const usable = files.filter(e => !e.unsupported);
+
+  // 先照根層找，找不到 lead 就試著剝一層外殼資料夾
+  let res = classify(usable, '');
+  if (!res.assets.lead) {
+    const tops = new Set(usable.map(e => e.name.split('/')[0]));
+    if (tops.size === 1) res = classify(usable, [...tops][0] + '/');
+  }
+
+  if (!res.assets.lead) {
+    clearPack();
+    refreshImport();
+    return impSay(
+      `<span class="err">lead.webp not found — a pack must contain it</span>\n` +
+      `<span class="warn">${files.length} file(s) in archive, none matched the naming rules.</span>\n` +
+      `See “Recognized file names” below.`);
+  }
+
+  clearPack();
+  pack.name = file.name;
+  pack.game = file.name.replace(/\.zip$/i, '').replace(/[^\w-]+/g, '_') || 'pack';
+  pack.assets = { lead: impUrl(res.assets.lead) };
+  LANG_FILES.forEach(l => { if (res.assets[l]) pack.assets[l] = impUrl(res.assets[l]); });
+
+  const found = LANG_FILES.filter(l => pack.assets[l]);
+  const missing = LANG_FILES.filter(l => !pack.assets[l]);
+  packMsg =
+    `<span class="ok">✓ lead.webp</span>\n` +
+    (found.length
+      ? found.map(l => `<span class="ok">✓ ${l}.webp — ${langLabel(l)}</span>`).join('\n')
+      : `<span class="warn">⚠ no title image found</span>`) +
+    (missing.length ? `\n<span class="warn">⚠ missing: ${missing.map(l => l + '.webp').join(' / ')}</span>` : '') +
+    (bad.length ? `\n<span class="err">✗ unsupported compression: ${bad.slice(0, 3).join(', ')}</span>` : '');
+
+  refreshImport();
+}
+
+// pack 換了就更新標題與可用狀態；Background／Language／Size 一律吃左欄設定
+function refreshImport() {
+  $('impName').textContent = pack.name || 'no pack loaded';
+  const has = !!pack.assets;
+  IMP_KEYS.forEach(k => $(k).disabled = !has);
+  $('impDl').disabled = !has;
+  paintMsg();
+  drawImport();
+}
+
+const impLayout = () => {
+  const r = curRatio();
+  if (!pack.layouts[r]) pack.layouts[r] = { ...BASE };
+  return pack.layouts[r];
+};
+
+const impSrcs = () => {
+  const l = $('lang').value;
+  return {
+    bg: $('theme').value + '.webp',
+    lead: pack.assets.lead,
+    title: l === 'none' ? null : (pack.assets[l] || null),
+  };
+};
+
+async function drawImport() {
+  const cv = $('impCv');
+  const { w, h } = dims();
+  cv.width = 600;
+  cv.height = Math.round(600 * h / w);
+  const ctx = cv.getContext('2d');
+  if (!pack.assets) return ctx.clearRect(0, 0, cv.width, cv.height);
+
+  const L = impLayout();
+  IMP_KEYS.forEach(k => {
+    const key = k.slice(3, 4).toLowerCase() + k.slice(4);
+    $(k).value = L[key];
+    $(k + 'v').textContent = L[key] + '%';
+  });
+  try { await drawComposite(cv, impSrcs(), L); } catch (e) { /* 錯誤已畫在畫布上 */ }
+}
+
+IMP_KEYS.forEach(k => $(k).addEventListener('input', () => {
+  const key = k.slice(3, 4).toLowerCase() + k.slice(4);
+  impLayout()[key] = +$(k).value;
+  $(k + 'v').textContent = $(k).value + '%';
+  drawImport();
+}));
+
+$('impOpen').onclick = () => { refreshImport(); $('imp').showModal(); };
+// Done 收工：關閉時把匯入的包一併清掉，下次開啟是乾淨的
+$('impClose').onclick = () => {
+  $('imp').close();
+  clearPack();
+  packMsg = '';
+  refreshImport();
+};
+$('impFile').onchange = e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  if (!/\.zip$/i.test(f.name)) return impSay('<span class="err">Only .zip packs are accepted</span>');
+  importPack(f);
+  e.target.value = '';
+};
+['theme', 'lang', 'size'].forEach(id => $(id).addEventListener('input', () => {
+  if ($('imp').open) { paintMsg(); drawImport(); }
+}));
+
+$('impReset').onclick = () => { Object.assign(impLayout(), BASE); drawImport(); };
+
+$('impDl').onclick = async () => {
+  if (!pack.assets) return;
+  const size = curSize(), l = $('lang').value;
+  const themeName = $('theme').value.replace('bg_', '');
+  const cv = document.createElement('canvas');
+  cv.width = size.w;
+  cv.height = size.h;
+  try {
+    await drawComposite(cv, impSrcs(), impLayout());
+    const blob = await new Promise((res, rej) => cv.toBlob(
+      b => b ? res(b) : rej(new Error('Encode failed')), $('fmt').value, 0.95));
+    saveBlob(blob, `${pack.game}_${themeName}_${l}_${sizeKey(size)}.${ext()}`);
+  } catch (e) {
+    impSay(`<span class="err">${e.message}</span>`);
+  }
+};
 
 buildGrid();
 countJobs();
