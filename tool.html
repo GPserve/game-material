@@ -348,7 +348,7 @@ cn.webp      localized title — also en.webp / tw.webp</pre>
 </dialog>
 
 <script>
-const GAMES = ['baccarat', 'blackjack', 'chicken', 'dice', 'flip', 'keno', 'limbo', 'mines', 'penguin', 'plinko', 'wheel'];
+const GAMES = ['ai_baccarat', 'ai_blackjack', 'ai_dragon_tiger', 'baccarat', 'blackjack', 'chicken', 'dice', 'dragon_tiger', 'flip', 'keno', 'limbo', 'mines', 'penguin', 'plinko', 'wheel'];
 const LANGS = [
   { code: 'none', label: 'None' },
   { code: 'tw', label: '繁體中文' },
@@ -390,7 +390,8 @@ const curRatio = () => curSize().ratio;
 const dims = () => ({ w: curSize().w, h: curSize().h });
 const isTuned = g => RATIOS.some(r => KEYS.some(k => layouts[g][r][k] !== BASE[k]));
 const langLabel = code => LANGS.find(l => l.code === code).label;
-const title = g => g[0].toUpperCase() + g.slice(1);
+// 顯示名：底線分詞、ai 前綴大寫（ai_dragon_tiger → AI Dragon Tiger）
+const title = g => g.split('_').map(w => w === 'ai' ? 'AI' : w[0].toUpperCase() + w.slice(1)).join(' ');
 const ext = () => $('fmt').value === 'image/png' ? 'png' : 'webp';
 // 主題／語系／尺寸都取當前選擇：匯出的就是 grid 上看到的那幾張
 const countJobs = () => $('allCount').textContent = selected.size;
