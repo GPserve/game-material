@@ -304,6 +304,7 @@
         <select id="fmt">
           <option value="image/webp">webp</option>
           <option value="image/png">png</option>
+          <option value="image/jpeg">jpg</option>
         </select>
       </label>
       <button id="dlZip">Export ZIP (<span id="allCount"></span>)</button>
@@ -449,7 +450,8 @@ const isTuned = g => RATIOS.some(r => KEYS.some(k => layouts[g][r][k] !== BASE[k
 const langLabel = code => LANGS.find(l => l.code === code).label;
 // 顯示名：底線分詞、ai 前綴大寫（ai_dragon_tiger → AI Dragon Tiger）
 const title = g => g.split('_').map(w => w === 'ai' ? 'AI' : w[0].toUpperCase() + w.slice(1)).join(' ');
-const ext = () => $('fmt').value === 'image/png' ? 'png' : 'webp';
+const EXT = { 'image/png': 'png', 'image/jpeg': 'jpg' };
+const ext = () => EXT[$('fmt').value] || 'webp';
 const themeName = () => $('theme').value.replace('bg_', '');
 // 老虎機沒有主題可選，檔名少一段
 const outName = (game, lang, size) => isSlot(game)
