@@ -31,8 +31,51 @@
     background: var(--bg);
     color: var(--text);
   }
-  header { padding: 14px 20px; border-bottom: 1px solid var(--line); }
-  h1 { font-size: 16px; margin: 0; }
+  header {
+    display: flex;
+    align-items: center;
+    gap: 26px;
+    padding: 0 20px;
+    border-bottom: 1px solid var(--line);
+  }
+  h1 { margin: 0; font-size: 16px; line-height: 20px; }
+  .tabs {
+    display: flex;
+    align-self: stretch;
+    align-items: center;
+    gap: 2px;
+    padding: 9px 0;
+  }
+  .tab {
+    position: relative;
+    width: auto;
+    margin: 0;
+    padding: 6px 14px;
+    background: none;
+    border: none;
+    border-radius: 7px;
+    color: var(--muted);
+    font: inherit;
+    font-weight: 500;
+    line-height: 20px;
+    cursor: pointer;
+    transition: color .15s, background-color .15s;
+  }
+  .tab:hover { background: var(--panel); color: var(--text); }
+  .tab:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
+  /* .on 排在 :hover 後面，選中的分頁才不會再吃 hover 底色 */
+  .tab.on { background: none; color: var(--accent); cursor: default; }
+  /* bottom -10px = .tabs 的 padding-bottom 9px + header 的 1px 框線，改那兩個值要一起調 */
+  .tab.on::after {
+    content: "";
+    position: absolute;
+    right: 12px;
+    bottom: -10px;
+    left: 12px;
+    height: 2px;
+    border-radius: 1px;
+    background: var(--accent);
+  }
   #warn {
     display: none;
     margin: 0;
@@ -212,7 +255,13 @@
 </head>
 <body>
 
-<header><h1>Game Icon Generator</h1></header>
+<header>
+  <h1>Game Icon Generator</h1>
+  <nav class="tabs" aria-label="View">
+    <button class="tab on" data-mode="icons">Icons</button>
+    <button class="tab" data-mode="slots">Slots</button>
+  </nav>
+</header>
 
 <p id="warn">
   Opened via <code>file://</code> — the browser blocks canvas export.
@@ -224,7 +273,7 @@
   <div class="panel" id="controls">
     <fieldset>
       <legend>Assets</legend>
-      <label>Theme
+      <label id="themeField">Theme
         <select id="theme">
           <option value="bg_cyber">cyber</option>
           <option value="bg_pink">pink</option>
@@ -244,7 +293,7 @@
       </label>
     </fieldset>
 
-    <fieldset>
+    <fieldset id="importField">
       <legend>Import</legend>
       <button id="impOpen" class="ghost">Choose pack (.zip)</button>
     </fieldset>
@@ -349,6 +398,9 @@ cn.webp      localized title — also en.webp / tw.webp</pre>
 
 <script>
 const GAMES = ['ai_baccarat', 'ai_blackjack', 'ai_dragon_tiger', 'baccarat', 'blackjack', 'chicken', 'dice', 'dragon_tiger', 'flip', 'fruit_king', 'keno', 'limbo', 'mines', 'penguin', 'plinko', 'wheel'];
+// 老虎機：素材自帶背景、且方形／直式各出一套，不吃內建主題
+const SLOTS = ['bunny_gold'];
+const ALL = [...GAMES, ...SLOTS];
 const LANGS = [
   { code: 'none', label: 'None' },
   { code: 'tw', label: '繁體中文' },
@@ -372,11 +424,16 @@ const sizeKey = s => `${s.w}x${s.h}`;
 const ratioOf = r => RATIOS.indexOf(r) >= 0 ? r : RATIOS[0];
 
 // layouts[game][ratio] = { leadW, leadX, leadY, titleW, titleX, titleY }
-const layouts = Object.fromEntries(GAMES.map(g =>
+const layouts = Object.fromEntries(ALL.map(g =>
   [g, Object.fromEntries(RATIOS.map(r => [r, { ...BASE }]))]));
-const selected = new Set(GAMES);
+const selected = new Set(ALL);
 const thumbs = {};
 let tuning = null;
+
+// 分頁只切換「哪張清單上 grid」與左欄顯示，合成路徑兩邊共用
+let mode = 'icons';
+const isSlot = g => SLOTS.includes(g);
+const activeList = () => mode === 'slots' ? SLOTS : GAMES;
 
 if (location.protocol === 'file:') $('warn').style.display = 'block';
 LANGS.forEach(l => $('lang').add(new Option(l.label, l.code)));
@@ -393,8 +450,14 @@ const langLabel = code => LANGS.find(l => l.code === code).label;
 // 顯示名：底線分詞、ai 前綴大寫（ai_dragon_tiger → AI Dragon Tiger）
 const title = g => g.split('_').map(w => w === 'ai' ? 'AI' : w[0].toUpperCase() + w.slice(1)).join(' ');
 const ext = () => $('fmt').value === 'image/png' ? 'png' : 'webp';
+const themeName = () => $('theme').value.replace('bg_', '');
+// 老虎機沒有主題可選，檔名少一段
+const outName = (game, lang, size) => isSlot(game)
+  ? `${game}_${lang}_${sizeKey(size)}.${ext()}`
+  : `${game}_${themeName()}_${lang}_${sizeKey(size)}.${ext()}`;
 // 主題／語系／尺寸都取當前選擇：匯出的就是 grid 上看到的那幾張
-const countJobs = () => $('allCount').textContent = selected.size;
+const countJobs = () =>
+  $('allCount').textContent = activeList().filter(g => selected.has(g)).length;
 
 function loadImage(src) {
   if (cache.has(src)) return cache.get(src);
@@ -445,18 +508,34 @@ async function drawComposite(cv, srcs, L) {
   }
 }
 
-const drawIcon = (cv, game, theme, lang, ratio) => drawComposite(cv, {
-  bg: theme + '.webp',
-  lead: game + '/lead.webp',
-  title: lang === 'none' ? null : `${game}/${lang}.webp`,
-}, layouts[game][ratioOf(ratio)]);
+// 老虎機自帶背景、方形（_sq）與直式各一套素材；一般款共用四套主題背景、單套主視覺
+function srcsOf(game, theme, lang, ratio) {
+  if (isSlot(game)) {
+    const v = ratio === '1:1' ? '_sq' : '';
+    return {
+      bg: `${game}/banner/bg${v}.webp`,
+      lead: `${game}/banner/lead${v}.webp`,
+      title: lang === 'none' ? null : `${game}/banner/${lang}.webp`,
+    };
+  }
+  return {
+    bg: theme + '.webp',
+    lead: game + '/lead.webp',
+    title: lang === 'none' ? null : `${game}/${lang}.webp`,
+  };
+}
+
+const drawIcon = (cv, game, theme, lang, ratio) => {
+  const r = ratioOf(ratio);
+  return drawComposite(cv, srcsOf(game, theme, lang, r), layouts[game][r]);
+};
 
 /* ---------- grid ---------- */
 
 function buildGrid() {
   const grid = $('grid');
   grid.innerHTML = '';
-  GAMES.forEach(g => {
+  activeList().forEach(g => {
     const cell = document.createElement('div');
     cell.className = 'cell';
 
@@ -496,8 +575,9 @@ function buildGrid() {
 }
 
 function markCells() {
+  const list = activeList();
   [...$('grid').children].forEach((cell, i) => {
-    const g = GAMES[i];
+    const g = list[i];
     cell.classList.toggle('off', !selected.has(g));
     cell.classList.toggle('tuned', isTuned(g));
   });
@@ -514,10 +594,11 @@ async function renderThumb(g) {
 }
 
 async function renderAll() {
-  $('note').textContent =
-    `${$('theme').value.replace('bg_', '')} / ${langLabel($('lang').value)} / ${sizeKey(curSize())}`;
+  const parts = [langLabel($('lang').value), sizeKey(curSize())];
+  if (mode !== 'slots') parts.unshift(themeName());
+  $('note').textContent = parts.join(' / ');
   markCells();
-  await Promise.all(GAMES.map(renderThumb));
+  await Promise.all(activeList().map(renderThumb));
 }
 
 const say = msg => console.log('[icon-tool] ' + msg);
@@ -616,7 +697,7 @@ function saveBlob(blob, name) {
 }
 
 $('dlZip').onclick = async () => {
-  const games = GAMES.filter(g => selected.has(g));
+  const games = activeList().filter(g => selected.has(g));
   const size = curSize();
   if (!games.length) return say('No games selected');
 
@@ -629,7 +710,7 @@ $('dlZip').onclick = async () => {
   let done = 0, fail = 0;
 
   for (const g of games) {
-    const name = `${g}_${theme.replace('bg_', '')}_${lang}_${sizeKey(size)}.${ext()}`;
+    const name = outName(g, lang, size);
     try {
       files.push({ name, bytes: await renderBytes(g, theme, lang, size) });
     } catch (e) {
@@ -641,7 +722,9 @@ $('dlZip').onclick = async () => {
 
   if (files.length) {
     const zip = makeZip(files);
-    const zipName = `game-icons_${theme.replace('bg_', '')}_${lang}_${sizeKey(size)}.zip`;
+    const zipName = mode === 'slots'
+      ? `slot-icons_${lang}_${sizeKey(size)}.zip`
+      : `game-icons_${themeName()}_${lang}_${sizeKey(size)}.zip`;
     saveBlob(zip, zipName);
     say(`${zipName} — ${files.length} icons, ${(zip.size / 1048576).toFixed(1)} MB${fail ? `, ${fail} failed` : ''}`);
   }
@@ -652,7 +735,7 @@ $('dlZip').onclick = async () => {
 
 $('dlOne').onclick = async () => {
   const s = curSize();
-  const name = `${tuning}_${$('theme').value.replace('bg_', '')}_${$('lang').value}_${sizeKey(s)}.${ext()}`;
+  const name = outName(tuning, $('lang').value, s);
   try {
     saveBlob(new Blob([await renderBytes(tuning, $('theme').value, $('lang').value, s)],
       { type: $('fmt').value }), name);
@@ -698,9 +781,9 @@ KEYS.forEach(k => $(k).addEventListener('input', () => {
 }));
 
 $('applyAll').onclick = () => {
-  const r = curRatio();
-  GAMES.forEach(g => Object.assign(layouts[g][r], layouts[tuning][r]));
-  say(`Layout of "${title(tuning)}" (${r}) applied to all ${GAMES.length} games`);
+  const r = curRatio(), list = activeList();
+  list.forEach(g => Object.assign(layouts[g][r], layouts[tuning][r]));
+  say(`Layout of "${title(tuning)}" (${r}) applied to all ${list.length} games`);
   renderAll();
 };
 
@@ -719,16 +802,33 @@ $('tuneClose').onclick = () => $('tune').close();
 /* ---------- misc ---------- */
 
 $('resetAll').onclick = () => {
-  GAMES.forEach(g => RATIOS.forEach(r => Object.assign(layouts[g][r], BASE)));
+  activeList().forEach(g => RATIOS.forEach(r => Object.assign(layouts[g][r], BASE)));
   renderAll();
   say('All layouts reset to default');
 };
 
-$('selAll').onclick = () => { GAMES.forEach(g => selected.add(g)); buildGrid(); renderAll(); countJobs(); };
-$('selNone').onclick = () => { selected.clear(); buildGrid(); renderAll(); countJobs(); };
+$('selAll').onclick = () => { activeList().forEach(g => selected.add(g)); buildGrid(); renderAll(); countJobs(); };
+$('selNone').onclick = () => { activeList().forEach(g => selected.delete(g)); buildGrid(); renderAll(); countJobs(); };
 
 ['theme', 'lang', 'size'].forEach(id => $(id).addEventListener('input', renderAll));
 $('lang').addEventListener('input', syncTitleState);
+
+/* ---------- tabs ---------- */
+
+// Slots 用自己的背景、也還沒支援素材包，兩個控制項在該頁收起來
+function setMode(next) {
+  mode = next;
+  [...document.querySelectorAll('.tab')].forEach(b => b.classList.toggle('on', b.dataset.mode === next));
+  const slot = next === 'slots';
+  $('themeField').style.display = slot ? 'none' : '';
+  $('importField').style.display = slot ? 'none' : '';
+  buildGrid();
+  countJobs();
+  renderAll();
+}
+
+document.querySelectorAll('.tab').forEach(b =>
+  b.onclick = () => { if (b.dataset.mode !== mode) setMode(b.dataset.mode); });
 
 /* ---------- import: 客製化素材包（獨立於 grid，只在彈窗內作業）---------- */
 
@@ -940,7 +1040,6 @@ $('impReset').onclick = () => { Object.assign(impLayout(), BASE); drawImport(); 
 $('impDl').onclick = async () => {
   if (!pack.assets) return;
   const size = curSize(), l = $('lang').value;
-  const themeName = $('theme').value.replace('bg_', '');
   const cv = document.createElement('canvas');
   cv.width = size.w;
   cv.height = size.h;
@@ -948,7 +1047,7 @@ $('impDl').onclick = async () => {
     await drawComposite(cv, impSrcs(), impLayout());
     const blob = await new Promise((res, rej) => cv.toBlob(
       b => b ? res(b) : rej(new Error('Encode failed')), $('fmt').value, 0.95));
-    saveBlob(blob, `${pack.game}_${themeName}_${l}_${sizeKey(size)}.${ext()}`);
+    saveBlob(blob, `${pack.game}_${themeName()}_${l}_${sizeKey(size)}.${ext()}`);
   } catch (e) {
     impSay(`<span class="err">${e.message}</span>`);
   }
